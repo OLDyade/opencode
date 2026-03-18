@@ -125,8 +125,20 @@ export namespace SessionProcessor {
                   toolcalls[value.id] = part as MessageV2.ToolPart
                   break
 
-                case "tool-input-delta":
+                case "tool-input-delta": {
+                  const tool = toolcalls[value.id]
+                  if (tool && tool.state.status === "pending") {
+                    tool.state.raw += value.delta
+                    await Session.updatePartDelta({
+                      sessionID: tool.sessionID,
+                      messageID: tool.messageID,
+                      partID: tool.id,
+                      field: "input",
+                      delta: value.delta,
+                    })
+                  }
                   break
+                }
 
                 case "tool-input-end":
                   break
