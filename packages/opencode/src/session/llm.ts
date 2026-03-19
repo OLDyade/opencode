@@ -187,6 +187,26 @@ export namespace LLM {
             toolName: lower,
           }
         }
+        // 尝试用 partial-json 修复截断的 JSON（常见于模型输出超 token 被截断的情况）
+        const rawInput = failed.toolCall.input
+        if (rawInput && typeof rawInput === "string") {
+          try {
+            const { parse: parsePartial, Allow } = await import("partial-json")
+            const repaired = parsePartial(rawInput, Allow.ALL)
+            if (repaired !== null && typeof repaired === "object") {
+              l.info("repaired truncated tool call input", {
+                tool: failed.toolCall.toolName,
+                originalLength: rawInput.length,
+              })
+              return {
+                ...failed.toolCall,
+                input: JSON.stringify(repaired),
+              }
+            }
+          } catch {
+            // 修复失败，降级到 invalid
+          }
+        }
         return {
           ...failed.toolCall,
           input: JSON.stringify({
