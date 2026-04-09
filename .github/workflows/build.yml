@@ -37,6 +37,7 @@ jobs:
         working-directory: packages/opencode
         env:
           OPENCODE_CHANNEL: latest
+          OPENCODE_VERSION: 1.2.24
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
