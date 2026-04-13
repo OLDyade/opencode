@@ -2,29 +2,17 @@ name: Build OpenCode
 
 on:
   push:
-    branches: [ loomy-opencode ]
+    branches:
+      - loomy-opencode
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build:
-    strategy:
-      matrix:
-        include:
-          - runner: ubuntu-latest
-            artifact_name: opencode-ubuntu-latest
-            build_args: --single --baseline
-          - runner: macos-latest
-            artifact_name: opencode-macos-latest
-            build_args: --single --baseline
-          - runner: macos-15-intel
-            artifact_name: opencode-macos-intel
-            build_args: --single
-          - runner: windows-latest
-            artifact_name: opencode-windows-latest
-            build_args: --single --baseline
-
-    runs-on: ${{ matrix.runner }}
-
+  build-cli:
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -32,16 +20,24 @@ jobs:
       - name: Setup Bun
         uses: ./.github/actions/setup-bun
 
-      - name: Build
-        run: bun run build ${{ matrix.build_args }}
-        working-directory: packages/opencode
+      - name: Build CLI binaries
+        run: ./packages/opencode/script/build.ts
         env:
           OPENCODE_CHANNEL: latest
           OPENCODE_VERSION: 1.4.3
 
-      - name: Upload artifacts
+      - name: Upload CLI artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact_name }}
-          path: packages/opencode/dist/*/bin/*
+          name: opencode-cli
+          path: |
+            packages/opencode/dist/opencode-darwin*
+            packages/opencode/dist/opencode-linux*
+          retention-days: 7
+
+      - name: Upload Windows CLI artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencode-cli-windows
+          path: packages/opencode/dist/opencode-windows*
           retention-days: 7
