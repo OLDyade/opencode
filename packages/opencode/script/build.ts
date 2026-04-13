@@ -52,6 +52,10 @@ const baselineFlag = process.argv.includes("--baseline")
 const skipInstall = process.argv.includes("--skip-install")
 const plugin = createSolidTransformPlugin()
 const skipEmbedWebUi = process.argv.includes("--skip-embed-web-ui")
+const requestedTargets = String(process.env.OPENCODE_TARGETS || "")
+  .split(",")
+  .map((item) => item.trim())
+  .filter(Boolean)
 
 const createEmbeddedWebUIBundle = async () => {
   console.log(`Building Web UI to embed in the binary`)
@@ -141,8 +145,27 @@ const allTargets: {
   },
 ]
 
+function targetName(item: { os: string; arch: string; abi?: string; avx2?: false }) {
+  return [
+    item.os === "win32" ? "windows" : item.os,
+    item.arch,
+    item.avx2 === false ? "baseline" : undefined,
+    item.abi,
+  ]
+    .filter(Boolean)
+    .join("-")
+}
+
+const filteredTargets = requestedTargets.length > 0
+  ? allTargets.filter((item) => requestedTargets.includes(targetName(item)))
+  : allTargets
+
+if (requestedTargets.length > 0 && filteredTargets.length === 0) {
+  throw new Error(`No build targets matched OPENCODE_TARGETS=${requestedTargets.join(",")}`)
+}
+
 const targets = singleFlag
-  ? allTargets.filter((item) => {
+  ? filteredTargets.filter((item) => {
       if (item.os !== process.platform || item.arch !== process.arch) {
         return false
       }
@@ -160,7 +183,7 @@ const targets = singleFlag
 
       return true
     })
-  : allTargets
+  : filteredTargets
 
 await $`rm -rf dist`
 
