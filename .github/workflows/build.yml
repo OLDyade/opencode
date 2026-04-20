@@ -24,7 +24,7 @@ jobs:
         run: ./packages/opencode/script/build.ts
         env:
           OPENCODE_CHANNEL: latest
-          OPENCODE_VERSION: 1.4.3
+          OPENCODE_VERSION: 1.14.19
           OPENCODE_TARGETS: darwin-arm64,darwin-x64-baseline,windows-x64-baseline
 
       - name: Upload macOS arm64 artifact
