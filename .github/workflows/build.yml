@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - loomy-opencode
+      - codex/upgrade-opencode-v1.14.19
   workflow_dispatch:
 
 concurrency:
