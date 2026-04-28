@@ -6,6 +6,7 @@ import type {
   WorkspaceAdaptor as PluginWorkspaceAdaptor,
 } from "@opencode-ai/plugin"
 import { Config } from "../config"
+import { ConfigPlugin } from "@/config/plugin"
 import { Bus } from "../bus"
 import { Log } from "../util"
 import { createOpencodeClient } from "@opencode-ai/sdk"
@@ -22,7 +23,7 @@ import { EffectBridge } from "@/effect"
 import { InstanceState } from "@/effect"
 import { errorMessage } from "@/util/error"
 import { PluginLoader } from "./loader"
-import { parsePluginSpecifier, readPluginId, readV1Plugin, resolvePluginId } from "./shared"
+import { parsePluginSpecifier, pluginSource, readPluginId, readV1Plugin, resolvePluginId } from "./shared"
 import { registerAdaptor } from "@/control-plane/adaptors"
 import type { WorkspaceAdaptor } from "@/control-plane/types"
 
@@ -158,16 +159,29 @@ export const layer = Layer.effect(
           if (init._tag === "Some") hooks.push(init.value)
         }
 
-        const plugins = Flag.OPENCODE_PURE ? [] : (cfg.plugin_origins ?? [])
+        const allowedFilePlugins = new Set(
+          (Flag.OPENCODE_ALLOWED_FILE_PLUGINS ?? "")
+            .split(",")
+            .map((item) => item.trim())
+            .filter(Boolean),
+        )
+        const plugins = Flag.OPENCODE_PURE
+          ? []
+          : (cfg.plugin_origins ?? []).filter((origin) => {
+              const spec = ConfigPlugin.pluginSpecifier(origin.spec)
+              const source = pluginSource(spec)
+              if (Flag.OPENCODE_DISABLE_NPM_PLUGINS && source === "npm") return false
+              if (source === "file" && allowedFilePlugins.size > 0) return allowedFilePlugins.has(spec)
+              return true
+            })
         if (Flag.OPENCODE_PURE && cfg.plugin_origins?.length) {
           log.info("skipping external plugins in pure mode", { count: cfg.plugin_origins.length })
         }
-        if (plugins.length) yield* config.waitForDependencies()
-
         const loaded = yield* Effect.promise(() =>
           PluginLoader.loadExternal({
             items: plugins,
             kind: "server",
+            wait: () => bridge.promise(config.waitForDependencies()),
             report: {
               start(candidate) {
                 log.info("loading plugin", { path: candidate.plan.spec })
