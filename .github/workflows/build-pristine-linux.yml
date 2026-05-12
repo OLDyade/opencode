@@ -1,0 +1,59 @@
+name: Build pristine opencode Linux
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Official anomalyco/opencode tag to build
+        required: true
+        default: v1.14.48
+
+permissions:
+  contents: read
+
+jobs:
+  build-linux:
+    name: Build Linux CLI
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout official opencode
+        uses: actions/checkout@v4
+        with:
+          repository: anomalyco/opencode
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+
+      - name: Verify pristine source
+        shell: bash
+        run: |
+          test "$(git remote get-url origin)" = "https://github.com/anomalyco/opencode"
+          git describe --tags --exact-match
+
+      - uses: ./.github/actions/setup-bun
+
+      - name: Set version
+        shell: bash
+        run: |
+          echo "OPENCODE_VERSION=${TAG#v}" >> "$GITHUB_ENV"
+          echo "OPENCODE_CHANNEL=latest" >> "$GITHUB_ENV"
+        env:
+          TAG: ${{ inputs.tag }}
+
+      - name: Build CLI binaries
+        run: ./packages/opencode/script/build.ts
+
+      - name: Verify Linux x64 binary
+        shell: bash
+        run: packages/opencode/dist/opencode-linux-x64/bin/opencode --version
+
+      - name: List Linux binaries
+        shell: bash
+        run: find packages/opencode/dist -path "*/opencode-linux-*/bin/opencode" -print
+
+      - name: Upload Linux binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencode-linux-${{ inputs.tag }}
+          path: |
+            packages/opencode/dist/opencode-linux-*/bin/opencode
+            packages/opencode/dist/opencode-linux-*/package.json
