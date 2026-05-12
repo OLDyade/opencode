@@ -39,21 +39,21 @@ jobs:
         env:
           TAG: ${{ inputs.tag }}
 
-      - name: Build CLI binaries
-        run: ./packages/opencode/script/build.ts
+      - name: Build Linux x64 CLI binary
+        run: ./packages/opencode/script/build.ts --single
 
       - name: Verify Linux x64 binary
         shell: bash
         run: packages/opencode/dist/opencode-linux-x64/bin/opencode --version
 
-      - name: List Linux binaries
+      - name: List artifact files
         shell: bash
-        run: find packages/opencode/dist -path "*/opencode-linux-*/bin/opencode" -print
+        run: find packages/opencode/dist/opencode-linux-x64 -type f -print
 
-      - name: Upload Linux binaries
+      - name: Upload Linux x64 binary
         uses: actions/upload-artifact@v4
         with:
-          name: opencode-linux-${{ inputs.tag }}
+          name: opencode-linux-x64-${{ inputs.tag }}
           path: |
-            packages/opencode/dist/opencode-linux-*/bin/opencode
-            packages/opencode/dist/opencode-linux-*/package.json
+            packages/opencode/dist/opencode-linux-x64/bin/opencode
+            packages/opencode/dist/opencode-linux-x64/package.json
