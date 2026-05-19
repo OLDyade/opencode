@@ -452,12 +452,24 @@ describe("session.compaction.isOverflow", () => {
   )
 
   it.live(
-    "returns false when input/output are within input caps",
+    "reserves the model output limit when input limit is configured",
     provideTmpdirInstance(() =>
       Effect.gen(function* () {
         const compact = yield* SessionCompaction.Service
         const model = createModel({ context: 400_000, input: 272_000, output: 128_000 })
-        const tokens = { input: 200_000, output: 20_000, reasoning: 0, cache: { read: 10_000, write: 0 } }
+        const tokens = { input: 150_000, output: 5_000, reasoning: 0, cache: { read: 5_000, write: 0 } }
+        expect(yield* compact.isOverflow({ tokens, model })).toBe(true)
+      }),
+    ),
+  )
+
+  it.live(
+    "returns false when token count is within input limit after reserving output",
+    provideTmpdirInstance(() =>
+      Effect.gen(function* () {
+        const compact = yield* SessionCompaction.Service
+        const model = createModel({ context: 400_000, input: 272_000, output: 128_000 })
+        const tokens = { input: 100_000, output: 20_000, reasoning: 0, cache: { read: 10_000, write: 0 } }
         expect(yield* compact.isOverflow({ tokens, model })).toBe(false)
       }),
     ),
@@ -476,14 +488,8 @@ describe("session.compaction.isOverflow", () => {
   )
 
   // ─── Bug reproduction tests ───────────────────────────────────────────
-  // These tests demonstrate that when limit.input is set, isOverflow()
-  // does not subtract any headroom for the next model response. This means
-  // compaction only triggers AFTER we've already consumed the full input
-  // budget, leaving zero room for the next API call's output tokens.
-  //
-  // Compare: without limit.input, usable = context - output (reserves space).
-  // With limit.input, usable = limit.input (reserves nothing).
-  //
+  // These tests cover models with and without limit.input. Both branches must
+  // reserve model output before deciding whether compaction is needed.
   // Related issues: #10634, #8089, #11086, #12621
   // Open PRs: #6875, #12924
 
