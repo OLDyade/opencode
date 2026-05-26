@@ -1,38 +1,21 @@
-name: Build SparkX OpenCode
+name: typecheck
 
 on:
   push:
-    branches:
-      - codex/sparkx-thinking-mode
+    branches: [dev]
+  pull_request:
+    branches: [dev]
   workflow_dispatch:
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
-permissions:
-  contents: read
-
 jobs:
-  build-windows-cli:
-    runs-on: ubuntu-latest
+  typecheck:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Setup Bun
         uses: ./.github/actions/setup-bun
 
-      - name: Build Windows CLI binary
-        run: ./packages/opencode/script/build.ts
-        env:
-          OPENCODE_CHANNEL: latest
-          OPENCODE_VERSION: 1.14.22
-          OPENCODE_TARGETS: windows-x64-baseline
-
-      - name: Upload Windows baseline artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: opencode-windows-x64-baseline
-          path: packages/opencode/dist/opencode-windows-x64-baseline
-          retention-days: 7
+      - name: Run typecheck
+        run: bun typecheck
