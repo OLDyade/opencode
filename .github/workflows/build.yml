@@ -1,0 +1,51 @@
+name: Build OpenCode
+
+on:
+  push:
+    branches:
+      - loomy-opencode
+      - codex/upgrade-opencode-v1.14.19
+      - codex/sparkx-thinking-mode
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-cli:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun
+
+      - name: Build CLI binaries
+        run: ./packages/opencode/script/build.ts
+        env:
+          OPENCODE_CHANNEL: latest
+          OPENCODE_VERSION: 1.14.22
+          OPENCODE_TARGETS: darwin-arm64,darwin-x64-baseline,windows-x64-baseline
+
+      - name: Upload macOS arm64 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencode-darwin-arm64
+          path: packages/opencode/dist/opencode-darwin-arm64
+          retention-days: 7
+
+      - name: Upload macOS Intel baseline artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencode-darwin-x64-baseline
+          path: packages/opencode/dist/opencode-darwin-x64-baseline
+          retention-days: 7
+
+      - name: Upload Windows baseline artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencode-windows-x64-baseline
+          path: packages/opencode/dist/opencode-windows-x64-baseline
+          retention-days: 7
