@@ -192,6 +192,14 @@ const live: Layer.Layer<
           headers: {},
         },
       )
+      const shouldDisableSparkXThinking =
+        ProviderTransform.isSparkXAnthropic(input.model) && input.user.model.variant === "thinking-off" && !input.small
+      const requestHeaders = {
+        ...headers,
+        ...(shouldDisableSparkXThinking
+          ? { [ProviderTransform.SPARK_X_THINKING_HEADER]: ProviderTransform.SPARK_X_THINKING_DISABLED }
+          : {}),
+      }
 
       const tools = resolveTools(input)
 
@@ -400,7 +408,7 @@ const live: Layer.Layer<
                 "User-Agent": `opencode/${InstallationVersion}`,
               }),
           ...input.model.headers,
-          ...headers,
+          ...requestHeaders,
         },
         maxRetries: input.retries ?? 0,
         messages,

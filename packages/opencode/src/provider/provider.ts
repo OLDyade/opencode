@@ -86,6 +86,52 @@ function wrapSSE(res: Response, ms: number, ctl: AbortController) {
   })
 }
 
+function isRequest(input: any): input is Request {
+  return typeof Request !== "undefined" && input instanceof Request
+}
+
+async function applySparkXThinkingOverride(model: Model, input: any, opts: any) {
+  if (!ProviderTransform.isSparkXAnthropic(model)) return { input, opts }
+
+  const request = isRequest(input) ? input : undefined
+  const headers = new Headers(opts.headers ?? request?.headers)
+  const thinkingMode = headers.get(ProviderTransform.SPARK_X_THINKING_HEADER)
+  if (thinkingMode !== ProviderTransform.SPARK_X_THINKING_DISABLED) return { input, opts }
+
+  headers.delete(ProviderTransform.SPARK_X_THINKING_HEADER)
+
+  const body = opts.body ?? (request ? await request.clone().text() : undefined)
+  if (typeof body !== "string") {
+    throw new Error("Spark-X thinking override requires a JSON string request body")
+  }
+
+  const payload = JSON.parse(body)
+  if (!isRecord(payload)) {
+    throw new Error("Spark-X thinking override requires a JSON object request body")
+  }
+
+  const nextBody = JSON.stringify({
+    ...payload,
+    thinking: { type: ProviderTransform.SPARK_X_THINKING_DISABLED },
+  })
+  const nextOpts = {
+    ...opts,
+    headers,
+    body: nextBody,
+  }
+
+  if (!request || opts.body !== undefined) return { input, opts: nextOpts }
+
+  const nextInput = new Request(request, {
+    headers,
+    body: nextBody,
+  })
+  return {
+    input: nextInput,
+    opts: omit(nextOpts, ["body"]),
+  }
+}
+
 type BundledSDK = {
   languageModel(modelId: string): LanguageModelV3
 }
@@ -1445,7 +1491,8 @@ const layer: Layer.Layer<
 
         options["fetch"] = async (input: any, init?: BunFetchRequestInit) => {
           const fetchFn = customFetch ?? fetch
-          const opts = init ?? {}
+          let requestInput = input
+          let opts = init ?? {}
           const chunkAbortCtl = typeof chunkTimeout === "number" && chunkTimeout > 0 ? new AbortController() : undefined
           const signals: AbortSignal[] = []
 
@@ -1472,7 +1519,11 @@ const layer: Layer.Layer<
             }
           }
 
-          const res = await fetchFn(input, {
+          const patchedRequest = await applySparkXThinkingOverride(model, requestInput, opts)
+          requestInput = patchedRequest.input
+          opts = patchedRequest.opts
+
+          const res = await fetchFn(requestInput, {
             ...opts,
             // @ts-ignore see here: https://github.com/oven-sh/bun/issues/16682
             timeout: false,

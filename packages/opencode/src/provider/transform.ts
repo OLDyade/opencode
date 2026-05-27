@@ -388,6 +388,8 @@ export function topK(model: Provider.Model) {
 
 const WIDELY_SUPPORTED_EFFORTS = ["low", "medium", "high"]
 const OPENAI_EFFORTS = ["none", "minimal", ...WIDELY_SUPPORTED_EFFORTS, "xhigh"]
+export const SPARK_X_THINKING_HEADER = "x-opencode-spark-x-thinking"
+export const SPARK_X_THINKING_DISABLED = "disabled"
 
 function anthropicAdaptiveEfforts(apiId: string): string[] | null {
   if (["opus-4-7", "opus-4.7"].some((v) => apiId.includes(v))) {
@@ -399,7 +401,7 @@ function anthropicAdaptiveEfforts(apiId: string): string[] | null {
   return null
 }
 
-function isSparkXAnthropic(model: Provider.Model) {
+export function isSparkXAnthropic(model: Provider.Model) {
   return model.api.npm === "@ai-sdk/anthropic" && model.api.id.toLowerCase() === "spark-x"
 }
 
