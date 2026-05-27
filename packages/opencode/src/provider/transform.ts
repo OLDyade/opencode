@@ -407,7 +407,7 @@ export function variants(model: Provider.Model): Record<string, Record<string, a
   if (isSparkXAnthropic(model)) {
     return {
       "thinking-off": { thinking: { type: "disabled" } },
-      "thinking-auto": { thinking: { type: "auto" } },
+      "thinking-auto": {},
       "thinking-on": { thinking: { type: "enabled" } },
     }
   }
