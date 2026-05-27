@@ -96,11 +96,11 @@ const live: Layer.Layer<
       // TODO: move this to a proper hook
       const isOpenaiOauth = item.id === "openai" && info?.type === "oauth"
 
-      const system: string[] = []
-      system.push(
+      const system = [
+        // Keep the stable agent/provider prompt isolated so provider prefix caches
+        // are not invalidated by per-turn environment or user system text.
+        ...(input.agent.prompt ? [input.agent.prompt] : [SystemPrompt.provider(input.model).filter((x) => x).join("\n")]),
         [
-          // use agent prompt otherwise provider prompt
-          ...(input.agent.prompt ? [input.agent.prompt] : SystemPrompt.provider(input.model)),
           // any custom prompt passed into this call
           ...input.system,
           // any custom prompt from last user message
@@ -108,7 +108,7 @@ const live: Layer.Layer<
         ]
           .filter((x) => x)
           .join("\n"),
-      )
+      ].filter((x) => x)
 
       const header = system[0]
       yield* plugin.trigger(
