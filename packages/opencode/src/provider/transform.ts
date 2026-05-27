@@ -390,6 +390,8 @@ const WIDELY_SUPPORTED_EFFORTS = ["low", "medium", "high"]
 const OPENAI_EFFORTS = ["none", "minimal", ...WIDELY_SUPPORTED_EFFORTS, "xhigh"]
 export const SPARK_X_THINKING_HEADER = "x-opencode-spark-x-thinking"
 export const SPARK_X_THINKING_DISABLED = "disabled"
+export const SPARK_X_THINKING_ENABLED = "enabled"
+export const SPARK_X_THINKING_ENABLED_BUDGET_TOKENS = 1024
 
 function anthropicAdaptiveEfforts(apiId: string): string[] | null {
   if (["opus-4-7", "opus-4.7"].some((v) => apiId.includes(v))) {

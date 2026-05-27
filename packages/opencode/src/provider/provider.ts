@@ -96,7 +96,11 @@ async function applySparkXThinkingOverride(model: Model, input: any, opts: any) 
   const request = isRequest(input) ? input : undefined
   const headers = new Headers(opts.headers ?? request?.headers)
   const thinkingMode = headers.get(ProviderTransform.SPARK_X_THINKING_HEADER)
-  if (thinkingMode !== ProviderTransform.SPARK_X_THINKING_DISABLED) return { input, opts }
+  if (
+    thinkingMode !== ProviderTransform.SPARK_X_THINKING_DISABLED &&
+    thinkingMode !== ProviderTransform.SPARK_X_THINKING_ENABLED
+  )
+    return { input, opts }
 
   headers.delete(ProviderTransform.SPARK_X_THINKING_HEADER)
 
@@ -112,7 +116,13 @@ async function applySparkXThinkingOverride(model: Model, input: any, opts: any) 
 
   const nextBody = JSON.stringify({
     ...payload,
-    thinking: { type: ProviderTransform.SPARK_X_THINKING_DISABLED },
+    thinking:
+      thinkingMode === ProviderTransform.SPARK_X_THINKING_DISABLED
+        ? { type: ProviderTransform.SPARK_X_THINKING_DISABLED }
+        : {
+            type: ProviderTransform.SPARK_X_THINKING_ENABLED,
+            budget_tokens: ProviderTransform.SPARK_X_THINKING_ENABLED_BUDGET_TOKENS,
+          },
   })
   const nextOpts = {
     ...opts,

@@ -192,13 +192,17 @@ const live: Layer.Layer<
           headers: {},
         },
       )
-      const shouldDisableSparkXThinking =
-        ProviderTransform.isSparkXAnthropic(input.model) && input.user.model.variant === "thinking-off" && !input.small
+      const sparkXThinkingMode =
+        ProviderTransform.isSparkXAnthropic(input.model) && !input.small
+          ? input.user.model.variant === "thinking-off"
+            ? ProviderTransform.SPARK_X_THINKING_DISABLED
+            : input.user.model.variant === "thinking-on"
+              ? ProviderTransform.SPARK_X_THINKING_ENABLED
+              : undefined
+          : undefined
       const requestHeaders = {
         ...headers,
-        ...(shouldDisableSparkXThinking
-          ? { [ProviderTransform.SPARK_X_THINKING_HEADER]: ProviderTransform.SPARK_X_THINKING_DISABLED }
-          : {}),
+        ...(sparkXThinkingMode ? { [ProviderTransform.SPARK_X_THINKING_HEADER]: sparkXThinkingMode } : {}),
       }
 
       const tools = resolveTools(input)
