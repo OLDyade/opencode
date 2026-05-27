@@ -198,6 +198,8 @@ const live: Layer.Layer<
             ? ProviderTransform.SPARK_X_THINKING_DISABLED
             : input.user.model.variant === "thinking-on"
               ? ProviderTransform.SPARK_X_THINKING_ENABLED
+              : input.user.model.variant === "thinking-auto"
+                ? ProviderTransform.SPARK_X_THINKING_AUTO
               : undefined
           : undefined
       const requestHeaders = {
