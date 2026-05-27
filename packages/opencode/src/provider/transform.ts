@@ -399,19 +399,7 @@ function anthropicAdaptiveEfforts(apiId: string): string[] | null {
   return null
 }
 
-function isSparkXAnthropic(model: Provider.Model) {
-  return model.api.npm === "@ai-sdk/anthropic" && model.api.id.toLowerCase() === "spark-x"
-}
-
 export function variants(model: Provider.Model): Record<string, Record<string, any>> {
-  if (isSparkXAnthropic(model)) {
-    return {
-      "thinking-off": { thinking: { type: "disabled" } },
-      "thinking-auto": { thinking: { type: "auto" } },
-      "thinking-on": { thinking: { type: "enabled" } },
-    }
-  }
-
   if (!model.capabilities.reasoning) return {}
 
   const id = model.id.toLowerCase()
