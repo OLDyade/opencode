@@ -595,13 +595,22 @@ describe("session.compaction.isOverflow", () => {
   )
 
   it.live(
-    "does not infer a context window from input limit when context is unknown",
+    "uses the input limit as the context window when context is unknown",
     provideTmpdirInstance(() =>
       Effect.gen(function* () {
         const compact = yield* SessionCompaction.Service
         const model = createModel({ context: 0, input: 200_000, output: 32_000 })
-        const tokens = { input: 190_000, output: 5_000, reasoning: 0, cache: { read: 0, write: 0 } }
-        expect(yield* compact.isOverflow({ tokens, model })).toBe(false)
+        const belowThreshold = {
+          input: 150_000,
+          output: 10_000,
+          reasoning: 0,
+          cache: { read: 3_903, write: 0 },
+          total: 163_903,
+        }
+        const atThreshold = { ...belowThreshold, total: 163_904 }
+
+        expect(yield* compact.isOverflow({ tokens: belowThreshold, model })).toBe(false)
+        expect(yield* compact.isOverflow({ tokens: atThreshold, model })).toBe(true)
       }),
     ),
   )
