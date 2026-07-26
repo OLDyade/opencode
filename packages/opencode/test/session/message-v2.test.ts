@@ -1083,6 +1083,7 @@ describe("session.message-v2.fromError", () => {
       "Input length 265330 exceeds the maximum allowed input length of 262144 tokens",
       "Prompt has 140,000 tokens, but the configured context size is 131,072 tokens",
       "Range of input length should be [1, 131072]",
+      "内容太长了，请精简输入或开启新对话",
       "The input token count (1196265) exceeds the maximum number of tokens allowed (1048575)",
       "Please reduce the length of the messages or completion",
       "400 status code (no body)",

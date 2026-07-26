@@ -31,6 +31,7 @@ const OVERFLOW_PATTERNS = [
   /prompt has [\d,]+ tokens?, but the configured context size is [\d,]+ tokens?/i, // DS4
   /model_context_window_exceeded/i, // z.ai non-standard finish_reason surfaced as error text
   /range of input length should be/i, // DashScope/Qwen
+  /内容太长.*(?:精简输入|开启新对话)/i, // DashScope gateway without a semantic error code
   /too many tokens/i, // Generic fallback
   /token limit exceeded/i, // Generic fallback
 ]
