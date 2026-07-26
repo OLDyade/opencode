@@ -886,6 +886,48 @@ it.live(
 )
 
 it.live(
+  "compacts before the provider call when the pending user turn would exceed the hard window",
+  () =>
+    provideTmpdirServer(
+      Effect.fnUntraced(function* ({ llm }) {
+        const prompt = yield* SessionPrompt.Service
+        const sessions = yield* Session.Service
+        const chat = yield* sessions.create({ title: "Pinned" })
+        const seeded = yield* seed(chat.id, { finish: "stop" })
+        seeded.assistant.tokens = {
+          input: 70_000,
+          output: 5_000,
+          reasoning: 0,
+          cache: { read: 5_000, write: 0 },
+          total: 80_000,
+        }
+        yield* sessions.updateMessage(seeded.assistant)
+
+        const pendingText = `pending-${"x".repeat(40_000)}`
+        yield* llm.text("summary")
+        yield* llm.text("done")
+
+        const result = yield* prompt.prompt({
+          sessionID: chat.id,
+          agent: "build",
+          model: ref,
+          parts: [{ type: "text", text: pendingText }],
+        })
+
+        expect(result.info.role).toBe("assistant")
+        expect(result.parts).toContainEqual(expect.objectContaining({ type: "text", text: "done" }))
+        expect(yield* llm.calls).toBe(2)
+
+        const inputs = yield* llm.inputs
+        expect(JSON.stringify(inputs[0]?.messages)).not.toContain(pendingText)
+        expect(JSON.stringify(inputs[1]?.messages)).toContain(pendingText)
+      }),
+      { git: true, config: providerCfg },
+    ),
+  5_000,
+)
+
+it.live(
   "prompt submitted during an active run is included in the next LLM input",
   () =>
     provideTmpdirServer(

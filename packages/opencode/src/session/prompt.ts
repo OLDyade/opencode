@@ -1384,6 +1384,25 @@ NOTE: At any point in time through this workflow you should feel free to ask the
           if (
             lastFinished &&
             lastFinished.summary !== true &&
+            (yield* compaction.wouldOverflow({
+              tokens: lastFinished.tokens,
+              messages: msgs.filter((message) => message.info.id > lastFinished.id),
+              model,
+            }))
+          ) {
+            yield* compaction.create({
+              sessionID,
+              agent: lastUser.agent,
+              model: lastUser.model,
+              auto: true,
+              overflow: true,
+            })
+            continue
+          }
+
+          if (
+            lastFinished &&
+            lastFinished.summary !== true &&
             (yield* compaction.isOverflow({ tokens: lastFinished.tokens, model }))
           ) {
             yield* compaction.create({ sessionID, agent: lastUser.agent, model: lastUser.model, auto: true })

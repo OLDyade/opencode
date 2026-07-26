@@ -634,6 +634,55 @@ describe("session.compaction.isOverflow", () => {
   )
 })
 
+describe("session.compaction.wouldOverflow", () => {
+  it.live(
+    "detects a hard overflow caused by the pending user turn",
+    provideTmpdirInstance(() =>
+      Effect.gen(function* () {
+        const session = yield* Effect.promise(() => svc.create({}))
+        const pending = yield* Effect.promise(() => user(session.id, "x".repeat(400_000)))
+        const messages = yield* Effect.promise(() => svc.messages({ sessionID: session.id }))
+        const compact = yield* SessionCompaction.Service
+        const model = createModel({ context: 1_000_000, output: 10_000 })
+        const tokens = {
+          input: 840_000,
+          output: 10_000,
+          reasoning: 0,
+          cache: { read: 40_000, write: 0 },
+          total: 890_000,
+        }
+
+        expect(pending.role).toBe("user")
+        expect(yield* compact.isOverflow({ tokens, model })).toBe(false)
+        expect(yield* compact.wouldOverflow({ tokens, messages, model })).toBe(true)
+      }),
+    ),
+  )
+
+  it.live(
+    "does not preflight compact when the pending turn still fits the hard window",
+    provideTmpdirInstance(() =>
+      Effect.gen(function* () {
+        const session = yield* Effect.promise(() => svc.create({}))
+        yield* Effect.promise(() => user(session.id, "x".repeat(200_000)))
+        const messages = yield* Effect.promise(() => svc.messages({ sessionID: session.id }))
+        const compact = yield* SessionCompaction.Service
+        const model = createModel({ context: 1_000_000, output: 10_000 })
+        const tokens = {
+          input: 840_000,
+          output: 10_000,
+          reasoning: 0,
+          cache: { read: 40_000, write: 0 },
+          total: 890_000,
+        }
+
+        expect(yield* compact.isOverflow({ tokens, model })).toBe(false)
+        expect(yield* compact.wouldOverflow({ tokens, messages, model })).toBe(false)
+      }),
+    ),
+  )
+})
+
 describe("session.compaction.create", () => {
   it.live(
     "creates a compaction user message and part",
@@ -1367,6 +1416,60 @@ describe("session.compaction.process", () => {
           expect(
             last?.parts.some((part) => part.type === "text" && part.text.includes("Attached image/png: cat.png")),
           ).toBe(true)
+        } finally {
+          await rt.dispose()
+        }
+      },
+    })
+  })
+
+  test("pre-provider overflow compacts only history and replays the pending text turn", async () => {
+    await using tmp = await tmpdir()
+    const stub = llm()
+    let captured = ""
+    stub.push(
+      reply("summary", (input) => {
+        captured = JSON.stringify(input.messages)
+      }),
+    )
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const session = await svc.create({})
+        await user(session.id, "old history")
+        const pending = await user(session.id, "pending request")
+        await SessionCompaction.create({
+          sessionID: session.id,
+          agent: "build",
+          model: ref,
+          auto: true,
+          overflow: true,
+        })
+
+        const rt = liveRuntime(stub.layer, wide())
+        try {
+          const msgs = await svc.messages({ sessionID: session.id })
+          const parent = msgs.at(-1)?.info.id
+          expect(parent).toBeTruthy()
+          const result = await rt.runPromise(
+            SessionCompaction.Service.use((svc) =>
+              svc.process({
+                parentID: parent!,
+                messages: msgs,
+                sessionID: session.id,
+                auto: true,
+                overflow: true,
+              }),
+            ),
+          )
+
+          const last = (await svc.messages({ sessionID: session.id })).at(-1)
+          expect(result).toBe("continue")
+          expect(captured).toContain("old history")
+          expect(captured).not.toContain("pending request")
+          expect(last?.info.role).toBe("user")
+          expect(last?.info.id).not.toBe(pending.id)
+          expect(last?.parts).toContainEqual(expect.objectContaining({ type: "text", text: "pending request" }))
         } finally {
           await rt.dispose()
         }
