@@ -410,7 +410,7 @@ describe("session.compaction.isOverflow", () => {
   )
 
   it.live(
-    "reserves the model output limit when no input limit is configured",
+    "caps output reservation at the runtime output maximum",
     provideTmpdirInstance(() =>
       Effect.gen(function* () {
         const compact = yield* SessionCompaction.Service
@@ -419,8 +419,8 @@ describe("session.compaction.isOverflow", () => {
           input: 9_022,
           output: 928,
           reasoning: 22,
-          cache: { read: 620_928, write: 0 },
-          total: 630_900,
+          cache: { read: 953_954, write: 0 },
+          total: 963_904,
         }
         expect(yield* compact.isOverflow({ tokens, model })).toBe(true)
       }),
@@ -440,24 +440,24 @@ describe("session.compaction.isOverflow", () => {
   )
 
   it.live(
-    "respects input limit for input caps",
+    "uses the context limit instead of the model input limit",
     provideTmpdirInstance(() =>
       Effect.gen(function* () {
         const compact = yield* SessionCompaction.Service
         const model = createModel({ context: 400_000, input: 272_000, output: 128_000 })
         const tokens = { input: 271_000, output: 1_000, reasoning: 0, cache: { read: 2_000, write: 0 } }
-        expect(yield* compact.isOverflow({ tokens, model })).toBe(true)
+        expect(yield* compact.isOverflow({ tokens, model })).toBe(false)
       }),
     ),
   )
 
   it.live(
-    "reserves the model output limit when input limit is configured",
+    "reserves the runtime output maximum when input limit is configured",
     provideTmpdirInstance(() =>
       Effect.gen(function* () {
         const compact = yield* SessionCompaction.Service
         const model = createModel({ context: 400_000, input: 272_000, output: 128_000 })
-        const tokens = { input: 150_000, output: 5_000, reasoning: 0, cache: { read: 5_000, write: 0 } }
+        const tokens = { input: 350_000, output: 5_000, reasoning: 0, cache: { read: 8_904, write: 0 } }
         expect(yield* compact.isOverflow({ tokens, model })).toBe(true)
       }),
     ),
@@ -963,7 +963,9 @@ describe("session.compaction.process", () => {
             metadata: { compaction_continue: true },
           })
           if (last?.parts[0]?.type === "text") {
-            expect(last.parts[0].text).toContain("Continue if you have next steps")
+            expect(last.parts[0].text).toBe(
+              "继续执行压缩前尚未完成的任务。\n不要复盘进度，不要总结已完成内容，不要重复已经输出的用户答案。\n先完成所有待处理工具；所有工具结束后，只输出一次最终答案。",
+            )
           }
         } finally {
           await rt.dispose()

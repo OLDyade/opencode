@@ -534,7 +534,7 @@ export const layer: Layer.Layer<
               (input.overflow
                 ? "The previous request exceeded the provider's size limit due to large media attachments. The conversation was compacted and media files were removed from context. If the user was asking about attached images or files, explain that the attachments were too large to process and suggest they try again with smaller or fewer files.\n\n"
                 : "") +
-              "Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed."
+              "继续执行压缩前尚未完成的任务。\n不要复盘进度，不要总结已完成内容，不要重复已经输出的用户答案。\n先完成所有待处理工具；所有工具结束后，只输出一次最终答案。"
             yield* session.updatePart({
               id: PartID.ascending(),
               messageID: continueMsg.id,
