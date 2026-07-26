@@ -928,6 +928,98 @@ it.live(
 )
 
 it.live(
+  "does not continue after compacting a completed answer without tool calls",
+  () =>
+    provideTmpdirServer(
+      Effect.fnUntraced(function* ({ llm }) {
+        const prompt = yield* SessionPrompt.Service
+        const sessions = yield* Session.Service
+        const chat = yield* sessions.create({ title: "Pinned" })
+
+        yield* llm.text("final answer", { usage: { input: 90_000, output: 1_000 } })
+        yield* llm.text("summary")
+        yield* llm.text("duplicate answer")
+
+        yield* prompt.prompt({
+          sessionID: chat.id,
+          agent: "build",
+          model: ref,
+          parts: [{ type: "text", text: "finish this task" }],
+        })
+
+        expect(yield* llm.calls).toBe(2)
+        const messages = yield* sessions.messages({ sessionID: chat.id })
+        expect(
+          messages.some((message) =>
+            message.parts.some((part) => part.type === "text" && part.text === "duplicate answer"),
+          ),
+        ).toBe(false)
+      }),
+      { git: true, config: providerCfg },
+    ),
+  5_000,
+)
+
+it.live(
+  "continues after compaction when a completed step contains a tool call",
+  () =>
+    provideTmpdirServer(
+      Effect.fnUntraced(function* ({ llm }) {
+        const prompt = yield* SessionPrompt.Service
+        const sessions = yield* Session.Service
+        const chat = yield* sessions.create({
+          title: "Pinned",
+          permission: [{ permission: "*", pattern: "*", action: "allow" }],
+        })
+
+        yield* llm.push(reply().tool("first", { value: "first" }).stop().usage({ input: 90_000, output: 1_000 }))
+        yield* llm.text("summary")
+        yield* llm.text("done")
+
+        const result = yield* prompt.prompt({
+          sessionID: chat.id,
+          agent: "build",
+          model: ref,
+          parts: [{ type: "text", text: "use the tool" }],
+        })
+
+        expect(yield* llm.calls).toBe(3)
+        expect(result.parts).toContainEqual(expect.objectContaining({ type: "text", text: "done" }))
+      }),
+      { git: true, config: providerCfg },
+    ),
+  5_000,
+)
+
+it.live(
+  "continues after compaction when the completed step has no visible answer",
+  () =>
+    provideTmpdirServer(
+      Effect.fnUntraced(function* ({ llm }) {
+        const prompt = yield* SessionPrompt.Service
+        const sessions = yield* Session.Service
+        const chat = yield* sessions.create({ title: "Pinned" })
+
+        yield* llm.push(reply().stop().usage({ input: 90_000, output: 1_000 }))
+        yield* llm.text("summary")
+        yield* llm.text("final answer")
+
+        const result = yield* prompt.prompt({
+          sessionID: chat.id,
+          agent: "build",
+          model: ref,
+          parts: [{ type: "text", text: "finish this task" }],
+        })
+
+        expect(yield* llm.calls).toBe(3)
+        expect(result.parts).toContainEqual(expect.objectContaining({ type: "text", text: "final answer" }))
+      }),
+      { git: true, config: providerCfg },
+    ),
+  5_000,
+)
+
+it.live(
   "prompt submitted during an active run is included in the next LLM input",
   () =>
     provideTmpdirServer(

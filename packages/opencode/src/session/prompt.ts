@@ -1532,11 +1532,18 @@ NOTE: At any point in time through this workflow you should feel free to ask the
 
             if (result === "stop") return "break" as const
             if (result === "compact") {
+              const current = yield* sessions.findMessage(sessionID, (message) => message.info.id === handle.message.id)
+              const hasToolCalls =
+                Option.isSome(current) &&
+                current.value.parts.some((part) => part.type === "tool" && !part.metadata?.providerExecuted)
+              const hasVisibleText =
+                Option.isSome(current) &&
+                current.value.parts.some((part) => part.type === "text" && part.text.trim().length > 0)
               yield* compaction.create({
                 sessionID,
                 agent: lastUser.agent,
                 model: lastUser.model,
-                auto: true,
+                auto: !finished || hasToolCalls || !hasVisibleText,
                 overflow: !handle.message.finish,
               })
             }
