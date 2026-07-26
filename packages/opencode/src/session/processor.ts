@@ -281,13 +281,16 @@ export const layer: Layer.Layer<
           case "tool-input-delta": {
             const match = yield* readToolCall(value.id)
             if (!match || match.part.state.status !== "pending") return
-            yield* updateToolCall(value.id, (part) => ({
-              ...part,
-              state: {
-                ...part.state,
-                raw: part.state.raw + value.delta,
-              },
-            }))
+            yield* updateToolCall(value.id, (part) => {
+              if (part.state.status !== "pending") return part
+              return {
+                ...part,
+                state: {
+                  ...part.state,
+                  raw: part.state.raw + value.delta,
+                },
+              }
+            })
             yield* session.updatePartDelta({
               sessionID: match.call.sessionID,
               messageID: match.call.messageID,
