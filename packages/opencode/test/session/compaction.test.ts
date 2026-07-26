@@ -1408,7 +1408,8 @@ describe("session.compaction.process", () => {
       directory: tmp.path,
       fn: async () => {
         const session = await svc.create({})
-        await user(session.id, "old history")
+        const old = await user(session.id, `old history ${"x".repeat(40_000)}`)
+        await assistant(session.id, old.id, tmp.path)
         const pending = await user(session.id, "pending request")
         await SessionCompaction.create({
           sessionID: session.id,
@@ -1442,6 +1443,17 @@ describe("session.compaction.process", () => {
           expect(last?.info.role).toBe("user")
           expect(last?.info.id).not.toBe(pending.id)
           expect(last?.parts).toContainEqual(expect.objectContaining({ type: "text", text: "pending request" }))
+          const all = await svc.messages({ sessionID: session.id })
+          const filtered = MessageV2.filterCompacted(MessageV2.stream(session.id))
+          expect(
+            filtered.filter((message) =>
+              message.parts.some((part) => part.type === "text" && part.text === "pending request"),
+            ),
+          ).toHaveLength(1)
+          const compaction = all
+            .findLast((message) => message.parts.some((part) => part.type === "compaction"))
+            ?.parts.find((part): part is MessageV2.CompactionPart => part.type === "compaction")
+          expect(compaction?.tail_start_id).toBeUndefined()
         } finally {
           await rt.dispose()
         }
