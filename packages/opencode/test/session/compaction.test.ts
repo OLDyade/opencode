@@ -8,6 +8,7 @@ import { Config } from "../../src/config"
 import { Agent } from "../../src/agent/agent"
 import { LLM } from "../../src/session/llm"
 import { SessionCompaction } from "../../src/session/compaction"
+import { isTruncatedOverflow } from "../../src/session/overflow"
 import { Token } from "../../src/util"
 import { Instance } from "../../src/project/instance"
 import { Log } from "../../src/util"
@@ -634,53 +635,24 @@ describe("session.compaction.isOverflow", () => {
   )
 })
 
-describe("session.compaction.wouldOverflow", () => {
-  it.live(
-    "detects a hard overflow caused by the pending user turn",
-    provideTmpdirInstance(() =>
-      Effect.gen(function* () {
-        const session = yield* Effect.promise(() => svc.create({}))
-        const pending = yield* Effect.promise(() => user(session.id, "x".repeat(400_000)))
-        const messages = yield* Effect.promise(() => svc.messages({ sessionID: session.id }))
-        const compact = yield* SessionCompaction.Service
-        const model = createModel({ context: 1_000_000, output: 10_000 })
-        const tokens = {
-          input: 840_000,
-          output: 10_000,
-          reasoning: 0,
-          cache: { read: 40_000, write: 0 },
-          total: 890_000,
-        }
+describe("session.compaction.isTruncatedOverflow", () => {
+  test("detects a zero-output length stop at the context boundary", () => {
+    const model = createModel({ context: 200_000, output: 32_000 })
+    const tokens = { input: 198_000, output: 0, reasoning: 0, cache: { read: 0, write: 0 } }
+    expect(isTruncatedOverflow({ tokens, finish: "length", model })).toBe(true)
+  })
 
-        expect(pending.role).toBe("user")
-        expect(yield* compact.isOverflow({ tokens, model })).toBe(false)
-        expect(yield* compact.wouldOverflow({ tokens, messages, model })).toBe(true)
-      }),
-    ),
-  )
+  test("uses input limit when context limit is unknown", () => {
+    const model = createModel({ context: 0, input: 200_000, output: 32_000 })
+    const tokens = { input: 198_000, output: 0, reasoning: 0, cache: { read: 0, write: 0 } }
+    expect(isTruncatedOverflow({ tokens, finish: "length", model })).toBe(true)
+  })
 
-  it.live(
-    "does not preflight compact when the pending turn still fits the hard window",
-    provideTmpdirInstance(() =>
-      Effect.gen(function* () {
-        const session = yield* Effect.promise(() => svc.create({}))
-        yield* Effect.promise(() => user(session.id, "x".repeat(200_000)))
-        const messages = yield* Effect.promise(() => svc.messages({ sessionID: session.id }))
-        const compact = yield* SessionCompaction.Service
-        const model = createModel({ context: 1_000_000, output: 10_000 })
-        const tokens = {
-          input: 840_000,
-          output: 10_000,
-          reasoning: 0,
-          cache: { read: 40_000, write: 0 },
-          total: 890_000,
-        }
-
-        expect(yield* compact.isOverflow({ tokens, model })).toBe(false)
-        expect(yield* compact.wouldOverflow({ tokens, messages, model })).toBe(false)
-      }),
-    ),
-  )
+  test("does not treat a completed answer as a retryable overflow", () => {
+    const model = createModel({ context: 200_000, output: 32_000 })
+    const tokens = { input: 201_000, output: 100, reasoning: 0, cache: { read: 0, write: 0 } }
+    expect(isTruncatedOverflow({ tokens, finish: "stop", model })).toBe(false)
+  })
 })
 
 describe("session.compaction.create", () => {
@@ -1013,7 +985,7 @@ describe("session.compaction.process", () => {
           expect(summary?.info.role).toBe("assistant")
           if (summary?.info.role === "assistant") {
             expect(summary.info.finish).toBe("error")
-            expect(JSON.stringify(summary.info.error)).toContain("Session too large to compact")
+            expect(JSON.stringify(summary.info.error)).toContain("Context overflow recovery failed after compaction")
           }
         } finally {
           await rt.dispose()

@@ -9,7 +9,7 @@ import { Snapshot } from "@/snapshot"
 import * as Session from "./session"
 import { LLM } from "./llm"
 import { MessageV2 } from "./message-v2"
-import { isOverflow } from "./overflow"
+import { isOverflow, isTruncatedOverflow } from "./overflow"
 import { PartID } from "./schema"
 import type { SessionID } from "./schema"
 import { SessionRetry } from "./retry"
@@ -24,7 +24,7 @@ import { isRecord } from "@/util/record"
 const DOOM_LOOP_THRESHOLD = 3
 const log = Log.create({ service: "session.processor" })
 
-export type Result = "compact" | "stop" | "continue"
+export type Result = "compact" | "overflow" | "stop" | "continue"
 
 export type Event = LLM.Event
 
@@ -69,6 +69,7 @@ interface ProcessorContext extends Input {
   snapshot: string | undefined
   blocked: boolean
   needsCompaction: boolean
+  contextOverflow: boolean
   currentText: MessageV2.TextPart | undefined
   reasoningMap: Record<string, MessageV2.ReasoningPart>
 }
@@ -119,6 +120,7 @@ export const layer: Layer.Layer<
         snapshot: initialSnapshot,
         blocked: false,
         needsCompaction: false,
+        contextOverflow: false,
         currentText: undefined,
         reasoningMap: {},
       }
@@ -419,6 +421,11 @@ export const layer: Layer.Layer<
               isOverflow({ cfg: yield* config.get(), tokens: usage.tokens, model: ctx.model })
             ) {
               ctx.needsCompaction = true
+              ctx.contextOverflow = isTruncatedOverflow({
+                tokens: usage.tokens,
+                finish: value.finishReason,
+                model: ctx.model,
+              })
             }
             return
           }
@@ -545,7 +552,7 @@ export const layer: Layer.Layer<
         const error = parse(e)
         if (MessageV2.ContextOverflowError.isInstance(error)) {
           ctx.needsCompaction = true
-          yield* bus.publish(Session.Event.Error, { sessionID: ctx.sessionID, error })
+          ctx.contextOverflow = true
           return
         }
         ctx.assistantMessage.error = error
@@ -559,6 +566,7 @@ export const layer: Layer.Layer<
       const process = Effect.fn("SessionProcessor.process")(function* (streamInput: LLM.StreamInput) {
         slog.info("process")
         ctx.needsCompaction = false
+        ctx.contextOverflow = false
         ctx.shouldBreak = (yield* config.get()).experimental?.continue_loop_on_deny !== true
 
         return yield* Effect.gen(function* () {
@@ -601,6 +609,7 @@ export const layer: Layer.Layer<
             Effect.ensuring(cleanup()),
           )
 
+          if (ctx.contextOverflow) return "overflow"
           if (ctx.needsCompaction) return "compact"
           if (ctx.blocked || ctx.assistantMessage.error) return "stop"
           return "continue"

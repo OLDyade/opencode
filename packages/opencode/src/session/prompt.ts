@@ -1308,6 +1308,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
         const slog = elog.with({ sessionID })
         let structured: unknown | undefined
         let step = 0
+        let overflowRecoveryAttempts = 0
         const session = yield* sessions.get(sessionID)
 
         while (true) {
@@ -1378,25 +1379,6 @@ NOTE: At any point in time through this workflow you should feel free to ask the
               overflow: task.overflow,
             })
             if (result === "stop") break
-            continue
-          }
-
-          if (
-            lastFinished &&
-            lastFinished.summary !== true &&
-            (yield* compaction.wouldOverflow({
-              tokens: lastFinished.tokens,
-              messages: msgs.filter((message) => message.info.id > lastFinished.id),
-              model,
-            }))
-          ) {
-            yield* compaction.create({
-              sessionID,
-              agent: lastUser.agent,
-              model: lastUser.model,
-              auto: true,
-              overflow: true,
-            })
             continue
           }
 
@@ -1531,6 +1513,27 @@ NOTE: At any point in time through this workflow you should feel free to ask the
             }
 
             if (result === "stop") return "break" as const
+            if (result === "overflow") {
+              if (overflowRecoveryAttempts >= 1) {
+                handle.message.error = new MessageV2.ContextOverflowError({
+                  message: "Context overflow recovery failed after compaction",
+                  recoveryAttempted: true,
+                }).toObject()
+                handle.message.finish = "error"
+                yield* sessions.updateMessage(handle.message)
+                yield* bus.publish(Session.Event.Error, { sessionID, error: handle.message.error })
+                return "break" as const
+              }
+              overflowRecoveryAttempts++
+              yield* compaction.create({
+                sessionID,
+                agent: lastUser.agent,
+                model: lastUser.model,
+                auto: true,
+                overflow: true,
+              })
+              return "continue" as const
+            }
             if (result === "compact") {
               const current = yield* sessions.findMessage(sessionID, (message) => message.info.id === handle.message.id)
               const hasToolCalls =

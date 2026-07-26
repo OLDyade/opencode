@@ -1078,7 +1078,11 @@ describe("session.message-v2.fromError", () => {
   test("detects context overflow from APICallError provider messages", () => {
     const cases = [
       "prompt is too long: 213462 tokens > 200000 maximum",
+      "request_too_large",
       "Your input exceeds the context window of this model",
+      "Input length 265330 exceeds the maximum allowed input length of 262144 tokens",
+      "Prompt has 140,000 tokens, but the configured context size is 131,072 tokens",
+      "Range of input length should be [1, 131072]",
       "The input token count (1196265) exceeds the maximum number of tokens allowed (1048575)",
       "Please reduce the length of the messages or completion",
       "400 status code (no body)",
@@ -1128,6 +1132,22 @@ describe("session.message-v2.fromError", () => {
         statusCode: 429,
         responseHeaders: { "content-type": "application/json" },
         isRetryable: false,
+      }),
+      { providerID },
+    )
+    expect(MessageV2.ContextOverflowError.isInstance(result)).toBe(false)
+    expect(MessageV2.APIError.isInstance(result)).toBe(true)
+  })
+
+  test("does not classify throttling messages containing too many tokens as context overflow", () => {
+    const result = MessageV2.fromError(
+      new APICallError({
+        message: "Throttling error: Too many tokens, please wait before trying again",
+        url: "https://example.com",
+        requestBodyValues: {},
+        statusCode: 429,
+        responseHeaders: { "content-type": "application/json" },
+        isRetryable: true,
       }),
       { providerID },
     )

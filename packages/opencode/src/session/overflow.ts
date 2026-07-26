@@ -14,13 +14,6 @@ export function usable(input: { cfg: Config.Info; model: Provider.Model }) {
   return Math.max(0, contextLimit - adaptiveReserve - COMPACTION_SAFETY_BUFFER)
 }
 
-export function hardUsable(input: { model: Provider.Model }) {
-  const contextLimit = input.model.limit.context || input.model.limit.input || 0
-  if (contextLimit === 0) return 0
-
-  return Math.max(0, contextLimit - maxOutputTokens(input.model) - COMPACTION_SAFETY_BUFFER)
-}
-
 export function isOverflow(input: { cfg: Config.Info; tokens: MessageV2.Assistant["tokens"]; model: Provider.Model }) {
   if (input.cfg.compaction?.auto === false) return false
   if (input.model.limit.context === 0 && !input.model.limit.input) return false
@@ -30,17 +23,13 @@ export function isOverflow(input: { cfg: Config.Info; tokens: MessageV2.Assistan
   return count >= usable(input)
 }
 
-export function isProjectedOverflow(input: {
-  cfg: Config.Info
+export function isTruncatedOverflow(input: {
   tokens: MessageV2.Assistant["tokens"]
-  additionalTokens: number
+  finish: string | undefined
   model: Provider.Model
 }) {
-  if (input.cfg.compaction?.auto === false) return false
-  const limit = hardUsable(input)
-  if (limit === 0) return false
-
-  const count =
-    input.tokens.total || input.tokens.input + input.tokens.output + input.tokens.cache.read + input.tokens.cache.write
-  return count + input.additionalTokens >= limit
+  const contextLimit = input.model.limit.context || input.model.limit.input || 0
+  if (contextLimit === 0 || input.finish !== "length" || input.tokens.output !== 0) return false
+  const usedInput = input.tokens.input + input.tokens.cache.read
+  return usedInput >= contextLimit * 0.99
 }

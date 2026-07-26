@@ -15,7 +15,7 @@ import { NotFoundError } from "@/storage"
 import { ModelID, ProviderID } from "@/provider/schema"
 import { Effect, Layer, Context } from "effect"
 import { InstanceState } from "@/effect"
-import { isOverflow as overflow, isProjectedOverflow, usable } from "./overflow"
+import { isOverflow as overflow, usable } from "./overflow"
 import { makeRuntime } from "@/effect/run-service"
 import { fn } from "@/util/fn"
 
@@ -186,11 +186,6 @@ export interface Interface {
     tokens: MessageV2.Assistant["tokens"]
     model: Provider.Model
   }) => Effect.Effect<boolean>
-  readonly wouldOverflow: (input: {
-    tokens: MessageV2.Assistant["tokens"]
-    messages: MessageV2.WithParts[]
-    model: Provider.Model
-  }) => Effect.Effect<boolean>
   readonly prune: (input: { sessionID: SessionID }) => Effect.Effect<void>
   readonly process: (input: {
     parentID: MessageID
@@ -244,26 +239,6 @@ export const layer: Layer.Layer<
     }) {
       const msgs = yield* MessageV2.toModelMessagesEffect(input.messages, input.model)
       return Token.estimate(JSON.stringify(msgs))
-    })
-
-    const wouldOverflow = Effect.fn("SessionCompaction.wouldOverflow")(function* (input: {
-      tokens: MessageV2.Assistant["tokens"]
-      messages: MessageV2.WithParts[]
-      model: Provider.Model
-    }) {
-      const messageTokens = yield* estimate({ messages: input.messages, model: input.model })
-      const systemTokens = Token.estimate(
-        input.messages
-          .filter((message): message is MessageV2.WithParts & { info: MessageV2.User } => message.info.role === "user")
-          .map((message) => message.info.system ?? "")
-          .join("\n"),
-      )
-      return isProjectedOverflow({
-        cfg: yield* config.get(),
-        tokens: input.tokens,
-        additionalTokens: messageTokens + systemTokens,
-        model: input.model,
-      })
     })
 
     const select = Effect.fn("SessionCompaction.select")(function* (input: {
@@ -480,14 +455,14 @@ export const layer: Layer.Layer<
         model,
       })
 
-      if (result === "compact") {
+      if (result === "compact" || result === "overflow") {
         processor.message.error = new MessageV2.ContextOverflowError({
-          message: replay
-            ? "Conversation history too large to compact - exceeds model context limit"
-            : "Session too large to compact - context exceeds model limit even after stripping media",
+          message: "Context overflow recovery failed after compaction",
+          recoveryAttempted: true,
         }).toObject()
         processor.message.finish = "error"
         yield* session.updateMessage(processor.message)
+        yield* bus.publish(Session.Event.Error, { sessionID: input.sessionID, error: processor.message.error })
         return "stop"
       }
 
@@ -612,7 +587,6 @@ export const layer: Layer.Layer<
 
     return Service.of({
       isOverflow,
-      wouldOverflow,
       prune,
       process: processCompaction,
       create,

@@ -53,6 +53,7 @@ export type APIError = z.infer<typeof APIError.Schema>
 export const ContextOverflowError = namedSchemaError("ContextOverflowError", {
   message: Schema.String,
   responseBody: Schema.optional(Schema.String),
+  recoveryAttempted: Schema.optional(Schema.Boolean),
 })
 
 export class OutputFormatText extends Schema.Class<OutputFormatText>("OutputFormatText")({

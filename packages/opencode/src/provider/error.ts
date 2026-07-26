@@ -7,12 +7,16 @@ import type { ProviderID } from "./schema"
 // https://github.com/badlogic/pi-mono/blob/main/packages/ai/src/utils/overflow.ts
 const OVERFLOW_PATTERNS = [
   /prompt is too long/i, // Anthropic
+  /request_too_large/i, // Anthropic request size overflow
   /input is too long for requested model/i, // Amazon Bedrock
   /exceeds the context window/i, // OpenAI (Completions + Responses API message text)
+  /exceeds (?:the )?(?:model'?s )?maximum context length(?: of [\d,]+ tokens?|\s*\([\d,]+\))/i,
   /input token count.*exceeds the maximum/i, // Google (Gemini)
   /maximum prompt length is \d+/i, // xAI (Grok)
   /reduce the length of the messages/i, // Groq
   /maximum context length is \d+ tokens/i, // OpenRouter, DeepSeek, vLLM
+  /exceeds (?:the )?maximum allowed input length of [\d,]+ tokens?/i, // OpenRouter/Poolside
+  /input \(\d+ tokens\) is longer than the model'?s context length \(\d+ tokens\)/i, // Together AI
   /exceeds the limit of \d+/i, // GitHub Copilot
   /exceeds the available context size/i, // llama.cpp server
   /greater than the context length/i, // LM Studio
@@ -24,8 +28,21 @@ const OVERFLOW_PATTERNS = [
   /input length.*exceeds.*context length/i, // vLLM
   /prompt too long; exceeded (?:max )?context length/i, // Ollama explicit overflow error
   /too large for model with \d+ maximum context length/i, // Mistral
+  /prompt has [\d,]+ tokens?, but the configured context size is [\d,]+ tokens?/i, // DS4
   /model_context_window_exceeded/i, // z.ai non-standard finish_reason surfaced as error text
+  /range of input length should be/i, // DashScope/Qwen
+  /too many tokens/i, // Generic fallback
+  /token limit exceeded/i, // Generic fallback
 ]
+
+const NON_OVERFLOW_PATTERNS = [/^(Throttling error|Service unavailable):/i, /rate limit/i, /too many requests/i]
+
+const OVERFLOW_CODES = new Set([
+  "context_length_exceeded",
+  "context_window_exceeded",
+  "model_context_window_exceeded",
+  "request_too_large",
+])
 
 function isOpenAiErrorRetryable(e: APICallError) {
   const status = e.statusCode
@@ -37,12 +54,18 @@ function isOpenAiErrorRetryable(e: APICallError) {
 // Providers not reliably handled in this function:
 // - z.ai: can accept overflow silently (needs token-count/context-window checks)
 function isOverflow(message: string) {
+  if (NON_OVERFLOW_PATTERNS.some((p) => p.test(message))) return false
   if (OVERFLOW_PATTERNS.some((p) => p.test(message))) return true
 
   // Providers/status patterns handled outside of regex list:
   // - Cerebras: often returns "400 (no body)" / "413 (no body)"
   // - Mistral: often returns "400 (no body)" / "413 (no body)"
   return /^4(00|13)\s*(status code)?\s*\(no body\)/i.test(message)
+}
+
+function hasOverflowCode(body: any) {
+  const values = [body?.code, body?.type, body?.error?.code, body?.error?.type]
+  return values.some((value) => typeof value === "string" && OVERFLOW_CODES.has(value.toLowerCase()))
 }
 
 function message(providerID: ProviderID, e: APICallError) {
@@ -120,15 +143,16 @@ export function parseStreamError(input: unknown): ParsedStreamError | undefined 
   if (!body) return
 
   const responseBody = JSON.stringify(body)
+  if (hasOverflowCode(body)) {
+    return {
+      type: "context_overflow",
+      message: "Input exceeds context window of this model",
+      responseBody,
+    }
+  }
   if (body.type !== "error") return
 
   switch (body?.error?.code) {
-    case "context_length_exceeded":
-      return {
-        type: "context_overflow",
-        message: "Input exceeds context window of this model",
-        responseBody,
-      }
     case "insufficient_quota":
       return {
         type: "api_error",
@@ -172,7 +196,7 @@ export type ParsedAPICallError =
 export function parseAPICallError(input: { providerID: ProviderID; error: APICallError }): ParsedAPICallError {
   const m = message(input.providerID, input.error)
   const body = json(input.error.responseBody)
-  if (isOverflow(m) || input.error.statusCode === 413 || body?.error?.code === "context_length_exceeded") {
+  if (isOverflow(m) || input.error.statusCode === 413 || hasOverflowCode(body)) {
     return {
       type: "context_overflow",
       message: m,

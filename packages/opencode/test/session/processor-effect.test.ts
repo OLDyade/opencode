@@ -636,7 +636,7 @@ it.live("session.processor effect tests compact on structured context overflow",
           tools: {},
         })
 
-        expect(value).toBe("compact")
+        expect(value).toBe("overflow")
         expect(yield* llm.calls).toBe(1)
         expect(handle.message.error).toBeUndefined()
       }),

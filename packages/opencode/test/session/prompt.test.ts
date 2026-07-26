@@ -886,48 +886,6 @@ it.live(
 )
 
 it.live(
-  "compacts before the provider call when the pending user turn would exceed the hard window",
-  () =>
-    provideTmpdirServer(
-      Effect.fnUntraced(function* ({ llm }) {
-        const prompt = yield* SessionPrompt.Service
-        const sessions = yield* Session.Service
-        const chat = yield* sessions.create({ title: "Pinned" })
-        const seeded = yield* seed(chat.id, { finish: "stop" })
-        seeded.assistant.tokens = {
-          input: 70_000,
-          output: 5_000,
-          reasoning: 0,
-          cache: { read: 5_000, write: 0 },
-          total: 80_000,
-        }
-        yield* sessions.updateMessage(seeded.assistant)
-
-        const pendingText = `pending-${"x".repeat(40_000)}`
-        yield* llm.text("summary")
-        yield* llm.text("done")
-
-        const result = yield* prompt.prompt({
-          sessionID: chat.id,
-          agent: "build",
-          model: ref,
-          parts: [{ type: "text", text: pendingText }],
-        })
-
-        expect(result.info.role).toBe("assistant")
-        expect(result.parts).toContainEqual(expect.objectContaining({ type: "text", text: "done" }))
-        expect(yield* llm.calls).toBe(2)
-
-        const inputs = yield* llm.inputs
-        expect(JSON.stringify(inputs[0]?.messages)).not.toContain(pendingText)
-        expect(JSON.stringify(inputs[1]?.messages)).toContain(pendingText)
-      }),
-      { git: true, config: providerCfg },
-    ),
-  5_000,
-)
-
-it.live(
   "does not continue after compacting a completed answer without tool calls",
   () =>
     provideTmpdirServer(
@@ -954,6 +912,72 @@ it.live(
             message.parts.some((part) => part.type === "text" && part.text === "duplicate answer"),
           ),
         ).toBe(false)
+      }),
+      { git: true, config: providerCfg },
+    ),
+  5_000,
+)
+
+it.live(
+  "compacts and replays once after a provider context overflow",
+  () =>
+    provideTmpdirServer(
+      Effect.fnUntraced(function* ({ llm }) {
+        const prompt = yield* SessionPrompt.Service
+        const sessions = yield* Session.Service
+        const chat = yield* sessions.create({ title: "Pinned" })
+        yield* seed(chat.id, { finish: "stop" })
+
+        yield* llm.error(400, { type: "error", error: { code: "context_length_exceeded" } })
+        yield* llm.text("summary")
+        yield* llm.text("final answer")
+
+        const result = yield* prompt.prompt({
+          sessionID: chat.id,
+          agent: "build",
+          model: ref,
+          parts: [{ type: "text", text: "large pending turn" }],
+        })
+
+        expect(yield* llm.calls).toBe(3)
+        expect(result.parts).toContainEqual(expect.objectContaining({ type: "text", text: "final answer" }))
+      }),
+      { git: true, config: providerCfg },
+    ),
+  5_000,
+)
+
+it.live(
+  "stops after one failed compact-and-replay attempt",
+  () =>
+    provideTmpdirServer(
+      Effect.fnUntraced(function* ({ llm }) {
+        const prompt = yield* SessionPrompt.Service
+        const sessions = yield* Session.Service
+        const chat = yield* sessions.create({ title: "Pinned" })
+        yield* seed(chat.id, { finish: "stop" })
+
+        yield* llm.error(400, { type: "error", error: { code: "context_length_exceeded" } })
+        yield* llm.text("summary")
+        yield* llm.error(400, { type: "error", error: { code: "context_length_exceeded" } })
+
+        const result = yield* prompt.prompt({
+          sessionID: chat.id,
+          agent: "build",
+          model: ref,
+          parts: [{ type: "text", text: "still too large" }],
+        })
+
+        expect(yield* llm.calls).toBe(3)
+        expect(result.info.role).toBe("assistant")
+        if (result.info.role !== "assistant") return
+        expect(result.info.error).toEqual(
+          expect.objectContaining({
+            name: "ContextOverflowError",
+            data: expect.objectContaining({ recoveryAttempted: true }),
+          }),
+        )
+        expect(JSON.stringify(result.info.error)).not.toContain("context_length_exceeded")
       }),
       { git: true, config: providerCfg },
     ),
