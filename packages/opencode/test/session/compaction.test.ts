@@ -428,6 +428,27 @@ describe("session.compaction.isOverflow", () => {
   )
 
   it.live(
+    "reserves ten percent of large context windows when it exceeds the runtime output maximum",
+    provideTmpdirInstance(() =>
+      Effect.gen(function* () {
+        const compact = yield* SessionCompaction.Service
+        const model = createModel({ context: 1_000_000, output: 384_000 })
+        const belowThreshold = {
+          input: 850_000,
+          output: 10_000,
+          reasoning: 0,
+          cache: { read: 35_903, write: 0 },
+          total: 895_903,
+        }
+        const atThreshold = { ...belowThreshold, total: 895_904 }
+
+        expect(yield* compact.isOverflow({ tokens: belowThreshold, model })).toBe(false)
+        expect(yield* compact.isOverflow({ tokens: atThreshold, model })).toBe(true)
+      }),
+    ),
+  )
+
+  it.live(
     "includes cache.read in token count",
     provideTmpdirInstance(() =>
       Effect.gen(function* () {
@@ -568,6 +589,18 @@ describe("session.compaction.isOverflow", () => {
         const compact = yield* SessionCompaction.Service
         const model = createModel({ context: 0, output: 32_000 })
         const tokens = { input: 100_000, output: 10_000, reasoning: 0, cache: { read: 0, write: 0 } }
+        expect(yield* compact.isOverflow({ tokens, model })).toBe(false)
+      }),
+    ),
+  )
+
+  it.live(
+    "does not infer a context window from input limit when context is unknown",
+    provideTmpdirInstance(() =>
+      Effect.gen(function* () {
+        const compact = yield* SessionCompaction.Service
+        const model = createModel({ context: 0, input: 200_000, output: 32_000 })
+        const tokens = { input: 190_000, output: 5_000, reasoning: 0, cache: { read: 0, write: 0 } }
         expect(yield* compact.isOverflow({ tokens, model })).toBe(false)
       }),
     ),

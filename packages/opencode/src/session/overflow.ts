@@ -10,7 +10,8 @@ export function usable(input: { cfg: Config.Info; model: Provider.Model }) {
   if (contextLimit === 0) return 0
 
   const effectiveOutput = maxOutputTokens(input.model)
-  return Math.max(0, contextLimit - effectiveOutput - COMPACTION_SAFETY_BUFFER)
+  const adaptiveReserve = Math.max(Math.ceil(contextLimit * 0.1), effectiveOutput)
+  return Math.max(0, contextLimit - adaptiveReserve - COMPACTION_SAFETY_BUFFER)
 }
 
 export function isOverflow(input: { cfg: Config.Info; tokens: MessageV2.Assistant["tokens"]; model: Provider.Model }) {
