@@ -537,7 +537,7 @@ export const layer: Layer.Layer<
               (input.overflow
                 ? "The previous request exceeded the provider's size limit due to large media attachments. The conversation was compacted and media files were removed from context. If the user was asking about attached images or files, explain that the attachments were too large to process and suggest they try again with smaller or fewer files.\n\n"
                 : "") +
-              "先检查压缩摘要中的 In Progress 和 Next Steps。只有其中明确列出未完成任务时才继续；两者均为 (none) 或没有明确待办时，立即结束当前回合，不输出任何文本。\n禁止根据已完成内容推断、扩展或创建新的步骤、轮次和任务。不要复盘进度，不要总结已完成内容，不要重复已经输出的用户答案。\n如有明确未完成任务，只执行这些条目；先完成所有待处理工具，工具结束后只输出一次最终答案。"
+              "继续处理压缩前的原始用户请求。结合压缩摘要和保留的上下文，自行判断原始请求是否还有尚未完成的工作；不要依赖固定章节、待办列表或特定摘要格式。\n若仍有未完成工作，直接完成剩余部分；先完成所有必要的工具调用，最后只输出一次最终答案。若原始请求已经完成，停止处理，不要复盘、总结或重复已经输出的答案，也不要输出 `(no response)`、`无回复` 等占位文本。\n不要根据已完成内容扩展或创建新的任务。"
             yield* session.updatePart({
               id: PartID.ascending(),
               messageID: continueMsg.id,
