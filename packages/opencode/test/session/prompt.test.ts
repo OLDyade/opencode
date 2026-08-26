@@ -342,6 +342,70 @@ it.live("loop exits immediately when last assistant has stop finish", () =>
   ),
 )
 
+it.live("loop continues after message ID rollover", () =>
+  provideTmpdirServer(
+    Effect.fnUntraced(function* ({ llm }) {
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const chat = yield* sessions.create({
+        title: "Pinned",
+        permission: [{ permission: "*", pattern: "*", action: "allow" }],
+      })
+      const previousUserID = MessageID.make("msg_fffffffff000AAAAAAAAAAAAAA")
+      const previousAssistantID = MessageID.make("msg_fffffffff001BBBBBBBBBBBBBB")
+      const currentUserID = MessageID.make("msg_000000000001CCCCCCCCCCCCCC")
+
+      yield* sessions.updateMessage({
+        id: previousUserID,
+        role: "user",
+        sessionID: chat.id,
+        agent: "build",
+        model: ref,
+        time: { created: 100 },
+      })
+      yield* sessions.updateMessage({
+        id: previousAssistantID,
+        role: "assistant",
+        parentID: previousUserID,
+        sessionID: chat.id,
+        mode: "build",
+        agent: "build",
+        cost: 0,
+        path: { cwd: "/tmp", root: "/tmp" },
+        tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+        modelID: ref.modelID,
+        providerID: ref.providerID,
+        time: { created: 200, completed: 201 },
+        finish: "stop",
+      })
+      yield* sessions.updateMessage({
+        id: currentUserID,
+        role: "user",
+        sessionID: chat.id,
+        agent: "build",
+        model: ref,
+        time: { created: 300 },
+      })
+      yield* sessions.updatePart({
+        id: PartID.ascending(),
+        messageID: currentUserID,
+        sessionID: chat.id,
+        type: "text",
+        text: "continue after rollover",
+      })
+      yield* llm.text("continued")
+
+      const result = yield* prompt.loop({ sessionID: chat.id })
+
+      expect(yield* llm.hits).toHaveLength(1)
+      expect(result.info.role).toBe("assistant")
+      if (result.info.role === "assistant") expect(result.info.parentID).toBe(currentUserID)
+      expect(result.parts.some((part) => part.type === "text" && part.text === "continued")).toBe(true)
+    }),
+    { git: true, config: providerCfg },
+  ),
+)
+
 it.live("loop calls LLM and returns assistant message", () =>
   provideTmpdirServer(
     Effect.fnUntraced(function* ({ llm }) {
